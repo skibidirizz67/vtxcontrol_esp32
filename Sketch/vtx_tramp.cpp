@@ -1,7 +1,36 @@
 #include "vtx_tramp.h"
 
-TrampParams params_buf;
-uint16_t temp_buf;
+/*
+# vtxtable
+vtxtable bands 6
+vtxtable channels 8
+vtxtable band 1 BOSCAM_A A CUSTOM 5865 5845 5825 5805 5785 5765 5745 5725
+vtxtable band 2 BOSCAM_B B CUSTOM 5733 5752 5771 5790 5999 5828 5847 5866
+vtxtable band 3 BOSCAM_E E CUSTOM 5705 5685 5665 5645 5885 5905 5925 5945
+vtxtable band 4 FATSHARK F CUSTOM 5740 5760 5780 5800 5820 5840 5860 5880
+vtxtable band 5 RACEBAND R CUSTOM 5658 5695 5732 5769 5806 5843 5880 5917
+vtxtable band 6 LOWRACE L CUSTOM 5362 5399 5436 5473 5510 5547 5584 5621
+vtxtable powerlevels 5
+vtxtable powervalues 25 100 200 400 600
+vtxtable powerlabels 25 400 800 1.5 2.5
+*/
+
+const uint16_t freq_table[48] = {
+    5865, 5845, 5825, 5805, 5785, 5765, 5745, 5725, // vtxtable band 1 BOSCAM_A A CUSTOM
+    5733, 5752, 5771, 5790, 5999, 5828, 5847, 5866, // vtxtable band 2 BOSCAM_B B CUSTOM
+    5705, 5685, 5665, 5645, 5885, 5905, 5925, 5945, // vtxtable band 3 BOSCAM_E E CUSTOM
+    5740, 5760, 5780, 5800, 5820, 5840, 5860, 5880, // vtxtable band 4 FATSHARK F CUSTOM
+    5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917, // vtxtable band 5 RACEBAND R CUSTOM
+    5362, 5399, 5436, 5473, 5510, 5547, 5584, 5621, // vtxtable band 6 LOWRACE L CUSTOM 
+};
+const uint16_t power_table[] = {25, 100, 200, 400, 600};
+const char *power_labels[] = {"25", "400", "800", "1.5", "2.5"};
+
+TrampParams fetched_params;
+uint16_t fetched_temp;
+
+uint16_t set_freq;
+uint16_t set_pow;
 
 uint8_t tramp_crc(const uint8_t *buf) {
     uint8_t cksum = 0;
@@ -40,24 +69,15 @@ bool tramp_receive_rsp(uint8_t *buf) {
         if (waiting_ms >= TRAMP_RSP_TIMEOUT_MS) break;
         waiting_ms += 100;
         delay(100);
-        Serial.println("too little frame, retrying");
-        Serial.println(VTX_Serial.available());
     }
 
     if (VTX_Serial.available() < TRAMP_FRAME_SIZE) return false;
-    Serial.println("enough frame");
-    Serial.println(VTX_Serial.available());
 
     if (!buf) return false;
-    Serial.println("buf not empty");
     if (!tramp_read(buf)) return false;
-    Serial.println("read done");
     if (buf[0] != TRAMP_SYNC_START) return false;
-    Serial.println("sync good");
     if (buf[14] != tramp_crc(buf)) return false;
-    Serial.println("crc good");
     if (buf[15] != TRAMP_SYNC_STOP) return false;
-    Serial.println("stop good");
 
     return true;
 }
@@ -75,37 +95,24 @@ TrampFrame buf2frame(const uint8_t *buf) {
 }
 
 bool tramp_handle_rsp(const TrampFrame *frame) {
-    Serial.println("handling response");
     switch (frame->cmd) {
-        case TRAMP_CMD_CMD_RF: {Serial.println("ignoring init");} break;
+        case TRAMP_CMD_CMD_RF: {} break;
         case TRAMP_CMD_GET_CONFIG: {
-            Serial.println("got config");
             if (frame->pld.freq == 0) break; 
-            memcpy(&params_buf, &frame->pld.buf, sizeof(params_buf));
-            Serial.println("updated config");
-            Serial.println(frame->pld.freq);
-            Serial.println(frame->pld.params.freq);
-            Serial.println(frame->pld.params.pow);
-            Serial.println(frame->pld.params.control_mode);
-            Serial.println(frame->pld.params.pit_mode);
-            Serial.println(frame->pld.params.act_pow);
+            memcpy(&fetched_params, &frame->pld.buf, sizeof(fetched_params));
         } break;
         case TRAMP_CMD_CMD_SENSOR: {
-            Serial.println("got sensor");
             if (frame->pld.temp == 0) break; 
-            Serial.println("updated senor");
-            temp_buf = frame->pld.temp;
+            fetched_temp = frame->pld.temp;
         } break;
         default: {
-            Serial.println("sum garbage");
             return false;
         } break; 
     }
-    Serial.println("done reponse");
     return true;
 }
 
-bool tramp_update() {
+bool tramp_update_params() {
     if (!tramp_send_cmd(TRAMP_CMD_GET_CONFIG, 0)) return false;
 
     uint8_t buf[TRAMP_FRAME_SIZE];
@@ -119,17 +126,21 @@ bool tramp_update() {
     return true;
 }
 
+bool tramp_apply_changes() {
+    tramp_send_cmd(TRAMP_CMD_SET_FREQ, set_freq);
+    tramp_send_cmd(TRAMP_CMD_SET_POW, set_pow);
+
+    return true;
+}
+
 bool tramp_init() {
     if (!tramp_send_cmd(TRAMP_CMD_CMD_RF, 0)) return false;
-    Serial.println("init sent");
     
     uint8_t buf[TRAMP_FRAME_SIZE];
     if (!tramp_receive_rsp(buf)) return false;
-    Serial.println("rsp received");
     TrampFrame frame = buf2frame(buf);
     memcpy(&frame, buf, TRAMP_FRAME_SIZE);
     if (!tramp_handle_rsp(&frame)) return false;
-    Serial.println("rsp handled");
 
     return true;
 }

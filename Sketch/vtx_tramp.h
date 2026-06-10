@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -56,9 +57,13 @@ typedef struct {
     uint8_t sync_stop;
 } TrampFrame;
 
-extern TrampParams params_buf;
-extern uint16_t temp_buf;
+extern TrampParams fetched_params;
+extern uint16_t fetched_temp;
+extern uint16_t set_freq;
+extern uint16_t set_pow;
+extern const uint16_t freq_table[48];
 
 bool tramp_init();
-bool tramp_update();
+bool tramp_update_params();
+bool tramp_apply_changes();
 void tramp_clear_uart();
