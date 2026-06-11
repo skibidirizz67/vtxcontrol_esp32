@@ -82,7 +82,6 @@ bool tramp_receive_rsp(uint8_t *buf) {
     return true;
 }
 
-// TODO: make it work
 TrampFrame buf2frame(const uint8_t *buf) {
     TrampFrame frame = {0};
     if (!buf) return frame;
@@ -92,6 +91,8 @@ TrampFrame buf2frame(const uint8_t *buf) {
     memcpy(&frame.pld, buf+2, TRAMP_PLD_SIZE);
     frame.crc = buf[14];
     frame.sync_stop = buf[15];
+
+    return frame;
 }
 
 bool tramp_handle_rsp(const TrampFrame *frame) {
